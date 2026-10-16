@@ -4,13 +4,15 @@ import TimeSelect from './TimeSelect.jsx';
 import PeoplePicker from './PeoplePicker.jsx';
 import {
   AREAS, PROJECTS, RECURRENCES,
-  carryCopy, expandRecurrence, fmtShort, fromMin, pendingFor, projectById, timeRange, toMin, uid,
+  carryCopy, doneTaskIds, expandRecurrence, fmtShort, fromMin, newReq, pendingFor, processById, projectById, timeRange, toMin, uid,
 } from '../data.js';
 
 const LAST = 24 * 60 - 15; // 23:45
 
 export default function MeetingForm({ draft, editing, meetings, people, onAddPerson, onRemovePerson, onSave, onDelete, onClose }) {
   const isEdit = Boolean(editing);
+  const fromMeetingId = draft?.fromMeetingId ?? null; // reprogramación: solo jala los pendientes de esa reunión
+  const locked = isEdit || Boolean(fromMeetingId); // proyecto y proceso no se cambian al editar o reprogramar
 
   const [f, setF] = useState(() =>
     isEdit
@@ -18,6 +20,7 @@ export default function MeetingForm({ draft, editing, meetings, people, onAddPer
       : {
           title: '',
           projectId: PROJECTS[0].id,
+          processId: PROJECTS[0].processes[0].id,
           areaIds: [],
           collabIds: [],
           date: '',
@@ -28,22 +31,46 @@ export default function MeetingForm({ draft, editing, meetings, people, onAddPer
           ...draft,
         }
   );
-  const [manual, setManual] = useState(isEdit ? editing.reqs : []); // requerimientos propios
+  // requerimientos propios de esta reunión (tareas del catálogo + «Otra tarea»)
+  const [own, setOwn] = useState(isEdit ? editing.reqs : []);
   const [removed, setRemoved] = useState([]); // arrastrados que el usuario quitó
-  const [newReq, setNewReq] = useState('');
+  const [otherText, setOtherText] = useState('');
   const [errors, setErrors] = useState({});
 
   // solo cuentan los colaboradores que todavía existen en la lista
   const selected = f.collabIds.filter((id) => people.some((p) => p.id === id));
 
-  // Requerimientos pendientes de reuniones anteriores del mismo proyecto
-  const pulled = useMemo(
-    () => (isEdit || !f.date ? [] : pendingFor(meetings, f.projectId, f.date).filter((r) => !removed.includes(r.id))),
-    [meetings, f.projectId, f.date, removed, isEdit]
-  );
+  const project = projectById(f.projectId);
+  const process = processById(f.projectId, f.processId);
+
+  // Pendientes que se jalan:
+  //  - al reprogramar: solo los de la reunión de origen
+  //  - al crear: los de reuniones anteriores del MISMO proyecto y proceso
+  const pulled = useMemo(() => {
+    if (isEdit || (!f.date && !fromMeetingId)) return [];
+    return pendingFor(meetings, { projectId: f.projectId, processId: f.processId, date: f.date, fromMeetingId }).filter(
+      (r) => !removed.includes(r.id)
+    );
+  }, [meetings, f.projectId, f.processId, f.date, removed, isEdit, fromMeetingId]);
+
+  const pulledTaskIds = new Set(pulled.map((r) => r.taskId).filter(Boolean));
+  const doneIds = useMemo(() => doneTaskIds(meetings, f.processId), [meetings, f.processId]);
+  const ownTaskIds = new Set(own.map((r) => r.taskId).filter(Boolean));
+  const others = own.filter((r) => !r.taskId); // «Otra tarea»
 
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
-  const changeProject = (projectId) => setF((p) => ({ ...p, projectId, deadline: projectById(projectId).deadline }));
+  // Al cambiar de proyecto o proceso se quitan las tareas del catálogo anterior (no se mezclan)
+  const changeProcess = (processId) => {
+    setF((p) => ({ ...p, processId }));
+    setOwn((list) => list.filter((r) => !r.taskId).map((r) => ({ ...r, processId })));
+    setRemoved([]);
+  };
+  const changeProject = (projectId) => {
+    const first = projectById(projectId).processes[0].id;
+    setF((p) => ({ ...p, projectId, processId: first, deadline: projectById(projectId).deadline }));
+    setOwn((list) => list.filter((r) => !r.taskId).map((r) => ({ ...r, processId: first })));
+    setRemoved([]);
+  };
 
   /* ---- horas: al cambiar el inicio se conserva la duración (como Google) ---- */
   const startOptions = useMemo(() => timeRange(0, LAST - 15), []);
@@ -80,11 +107,14 @@ export default function MeetingForm({ draft, editing, meetings, people, onAddPer
   };
 
   /* ---- requerimientos ---- */
-  const addReq = () => {
-    const text = newReq.trim();
+  const toggleTask = (task) =>
+    setOwn((list) => (list.some((r) => r.taskId === task.id) ? list.filter((r) => r.taskId !== task.id) : [...list, newReq(task.text, f.processId, task.id)]));
+
+  const addOther = () => {
+    const text = otherText.trim();
     if (!text) return;
-    setManual((r) => [...r, { id: uid(), text, state: 'pendiente', obs: '' }]);
-    setNewReq('');
+    setOwn((list) => [...list, newReq(text, f.processId)]);
+    setOtherText('');
   };
 
   const submit = () => {
@@ -95,12 +125,12 @@ export default function MeetingForm({ draft, editing, meetings, people, onAddPer
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
-    const reqs = [...manual, ...pulled.map((p) => carryCopy(p, p))];
+    const reqs = [...own, ...pulled.map((p) => carryCopy(p, p))];
     const base = {
       ...f,
       collabIds: selected,
       id: isEdit ? editing.id : uid(),
-      title: f.title.trim() || `Reunión · ${projectById(f.projectId).name}`,
+      title: f.title.trim() || `${process.name} · ${project.name}`,
       status: isEdit ? editing.status : 'Programada',
       reqs,
     };
@@ -126,8 +156,15 @@ export default function MeetingForm({ draft, editing, meetings, people, onAddPer
 
         <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Proyecto">
-            <select className={inputCls} value={f.projectId} onChange={(e) => changeProject(e.target.value)}>
+            <select className={inputCls} value={f.projectId} onChange={(e) => changeProject(e.target.value)} disabled={locked}>
               {PROJECTS.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Proceso">
+            <select className={inputCls} value={f.processId} onChange={(e) => changeProcess(e.target.value)} disabled={locked}>
+              {project.processes.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
@@ -195,31 +232,61 @@ export default function MeetingForm({ draft, editing, meetings, people, onAddPer
           {errors.collabs && <div className="mt-1 text-xs text-red-600">{errors.collabs}</div>}
         </div>
 
-        {/* Requerimientos */}
+        {/* Requerimientos: tareas del proceso elegido */}
         <div className="mt-6">
-          <div className="mb-2 text-xs font-medium text-gray-600">Requerimientos (checklist)</div>
+          <div className="mb-2 text-xs font-medium text-gray-600">
+            Requerimientos (checklist) · <span className="text-gray-800">{process.name}</span>
+          </div>
 
-          {pulled.map((p) => (
-            <div key={p.id} className="mb-2 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
-              <span className="mt-0.5 text-amber-600">↻</span>
-              <div className="flex-1 text-sm">
-                <div className="font-medium">{p.text}</div>
-                <div className="text-xs text-amber-800">
-                  Pendiente de «{p.meetingTitle}» · {fmtShort(p.meetingDate)}
-                  {p.obs && <> — Motivo: {p.obs}</>}
-                </div>
+          {/* Pendientes que vienen de reuniones anteriores (siempre del mismo proceso) */}
+          {pulled.length > 0 && (
+            <div className="mb-3">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                {fromMeetingId ? 'Pendientes de la reunión que se reprograma' : 'Pendientes de reuniones anteriores'}
               </div>
-              <button type="button" className="text-xs text-gray-500 hover:text-red-600" onClick={() => setRemoved((r) => [...r, p.id])}>
-                Quitar
-              </button>
+              {pulled.map((p) => (
+                <div key={p.id} className="mb-2 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+                  <span className="mt-0.5 text-amber-600">↻</span>
+                  <div className="flex-1 text-sm">
+                    <div className="font-medium">{p.text}</div>
+                    <div className="text-xs text-amber-800">
+                      Viene de «{p.meetingTitle}» · {fmtShort(p.meetingDate)}
+                      {p.obs && <> — Motivo: {p.obs}</>}
+                    </div>
+                  </div>
+                  <button type="button" className="text-xs text-gray-500 hover:text-red-600" onClick={() => setRemoved((r) => [...r, p.id])}>
+                    Quitar
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
 
-          {manual.map((r) => (
+          {/* Catálogo de tareas del proceso */}
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Tareas del proceso</div>
+          <div className="mb-3 divide-y rounded-lg border">
+            {process.tasks.map((t) => {
+              const isPulled = pulledTaskIds.has(t.id);
+              const isDoneTask = doneIds.has(t.id) && !ownTaskIds.has(t.id);
+              const disabled = isPulled || isDoneTask;
+              return (
+                <label key={t.id} className={`flex items-center gap-3 px-3 py-2 text-sm ${disabled ? 'text-gray-400' : 'cursor-pointer hover:bg-gray-50'}`}>
+                  <input type="checkbox" disabled={disabled} checked={ownTaskIds.has(t.id) || isPulled} onChange={() => toggleTask(t)} />
+                  <span className={`flex-1 ${isDoneTask ? 'line-through' : ''}`}>{t.text}</span>
+                  {isPulled && <span className="text-[11px] text-amber-700">ya viene como pendiente</span>}
+                  {isDoneTask && <span className="text-[11px] text-green-700">completada</span>}
+                </label>
+              );
+            })}
+          </div>
+
+          {/* Otra tarea (no está en el catálogo) */}
+          {others.map((r) => (
             <div key={r.id} className="mb-2 flex items-center gap-3 rounded-lg border p-3 text-sm">
               <span className="text-gray-400">☐</span>
               <span className="flex-1">{r.text}</span>
-              <button type="button" className="text-xs text-gray-500 hover:text-red-600" onClick={() => setManual((m) => m.filter((x) => x.id !== r.id))}>
+              <span className="text-[11px] text-gray-500">otra tarea</span>
+              <button type="button" className="text-xs text-gray-500 hover:text-red-600" onClick={() => setOwn((m) => m.filter((x) => x.id !== r.id))}>
                 Eliminar
               </button>
             </div>
@@ -228,12 +295,12 @@ export default function MeetingForm({ draft, editing, meetings, people, onAddPer
           <div className="flex gap-2">
             <input
               className={inputCls}
-              value={newReq}
-              onChange={(e) => setNewReq(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addReq())}
-              placeholder="Ej. Cambiar de color el botón enviar"
+              value={otherText}
+              onChange={(e) => setOtherText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addOther())}
+              placeholder="Otra tarea (si no está en la lista)"
             />
-            <button type="button" onClick={addReq} className="rounded-lg border px-4 text-sm font-medium text-blue-600 hover:bg-blue-50">
+            <button type="button" onClick={addOther} className="rounded-lg border px-4 text-sm font-medium text-blue-600 hover:bg-blue-50">
               Añadir
             </button>
           </div>

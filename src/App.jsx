@@ -3,9 +3,9 @@ import Calendar from './components/Calendar.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import MeetingForm from './components/MeetingForm.jsx';
 import MeetingDetail from './components/MeetingDetail.jsx';
-import ProposalsPanel from './components/ProposalsPanel.jsx';
+// «Proponer reuniones» queda desactivado por ahora (ProposalsPanel.jsx y buildProposals() se conservan para más adelante).
 import {
-  MONTHS, addDays, addMonths, buildProposals, carryCopy, cmpMeeting, fmtLong, fmtShort, fromKey, fromMin,
+  MONTHS, addDays, addMonths, carryCopy, cmpMeeting, fmtLong, fmtShort, fromKey, fromMin,
   isDone, makeSeed, meetingResult, nextWorkday, startOfWeek, todayKey, toMin, uid,
 } from './data.js';
 
@@ -23,9 +23,7 @@ export default function App() {
   const [cursor, setCursor] = useState(todayKey());
   const [hidden, setHidden] = useState([]);
   const [modal, setModal] = useState(null); // { type:'form'|'detail', ... }
-  const [showProposals, setShowProposals] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false); // menú lateral en celular/tablet
-  const [dismissed, setDismissed] = useState([]);
   const [toast, setToast] = useState(null);
 
   const notify = (msg) => {
@@ -34,10 +32,6 @@ export default function App() {
   };
 
   const visible = useMemo(() => meetings.filter((m) => !hidden.includes(m.projectId)), [meetings, hidden]);
-  const proposals = useMemo(
-    () => buildProposals(meetings, people).filter((p) => !dismissed.includes(p.project.id)),
-    [meetings, people, dismissed]
-  );
 
   /* ----------------------------- colaboradores -------------------------- */
   const addPerson = (name, areaId) => {
@@ -99,8 +93,9 @@ export default function App() {
   const patchReq = (mid, rid, patch) =>
     setMeetings((prev) => prev.map((m) => (m.id === mid ? { ...m, reqs: m.reqs.map((r) => (r.id === rid ? { ...r, ...patch } : r)) } : m)));
 
-  // estado de un requerimiento: completado | no_completado | pendiente
-  const setReqState = (mid, rid, state) => patchReq(mid, rid, state === 'completado' ? { state, obs: '' } : { state });
+  // estado de un requerimiento: null (sin marcar) | completado | no_completado | pendiente
+  // al marcar «Completado» o desmarcar se limpia la observación
+  const setReqState = (mid, rid, state) => patchReq(mid, rid, state === 'completado' || state === null ? { state, obs: '' } : { state });
 
   // El estado de la reunión se calcula solo: Completado / No completado / Pendiente
   const finishMeeting = (id) => {
@@ -108,7 +103,7 @@ export default function App() {
     notify('Reunión finalizada · resultado calculado automáticamente');
   };
 
-  // Reprogramar: abre el formulario con los mismos datos; al guardar jala los pendientes
+  // Reprogramar: abre el formulario con los mismos datos; al guardar jala SOLO los pendientes de esta reunión
   const reprogram = (id) => {
     const m = meetings.find((x) => x.id === id);
     const base = [m.date, todayKey()].sort()[1];
@@ -118,6 +113,8 @@ export default function App() {
       draft: {
         title: `${m.title.replace(/ \(reprogramada\)$/, '')} (reprogramada)`,
         projectId: m.projectId,
+        processId: m.processId,
+        fromMeetingId: m.id,
         areaIds: m.areaIds,
         collabIds: m.collabIds,
         date: nextWorkday(addDays(base, 1)),
@@ -128,13 +125,13 @@ export default function App() {
     });
   };
 
-  // Pasar los pendientes a la siguiente reunión ya programada del mismo proyecto
+  // Pasar los pendientes a la siguiente reunión ya programada del mismo proyecto y proceso
   const carryToNext = (id) => {
     setMeetings((prev) => {
       const src = prev.find((m) => m.id === id);
       const pend = src.reqs.filter((r) => !isDone(r) && !r.carried);
       const nxt = prev
-        .filter((m) => m.projectId === src.projectId && m.id !== id && m.status === 'Programada' && m.date >= src.date)
+        .filter((m) => m.projectId === src.projectId && m.processId === src.processId && m.id !== id && m.status === 'Programada' && m.date >= src.date)
         .sort(cmpMeeting)[0];
       if (!nxt || !pend.length) return prev;
       return prev.map((m) => {
@@ -145,23 +142,6 @@ export default function App() {
     });
     notify('Pendientes pasados a la siguiente reunión');
   };
-
-  /* ------------------------------ propuestas ---------------------------- */
-  const scheduleProposal = (p, it) =>
-    setModal({
-      type: 'form',
-      key: uid(),
-      draft: {
-        title: it.title,
-        projectId: p.project.id,
-        areaIds: p.areaIds,
-        collabIds: p.collabIds,
-        date: it.date,
-        start: it.start,
-        end: it.end,
-        deadline: p.project.deadline,
-      },
-    });
 
   const detailMeeting = modal?.type === 'detail' ? meetings.find((m) => m.id === modal.id) : null;
   const editingMeeting = modal?.type === 'form' && modal.editingId ? meetings.find((m) => m.id === modal.editingId) : null;
@@ -194,14 +174,6 @@ export default function App() {
         <h1 className="min-w-0 flex-1 truncate text-base first-letter:uppercase sm:flex-none sm:text-xl">{title}</h1>
 
         <div className="ml-auto flex items-center gap-2 sm:gap-3">
-          <button
-            onClick={() => setShowProposals((s) => !s)}
-            aria-label="Proponer reuniones"
-            className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium sm:px-4 ${showProposals ? 'border-blue-600 bg-blue-50 text-blue-700' : 'hover:bg-gray-50'}`}
-          >
-             <span className="hidden sm:inline">Proponer reuniones</span>
-            {proposals.length > 0 && <span className="rounded-full bg-red-500 px-1.5 text-xs text-white">{proposals.length}</span>}
-          </button>
           <div className="flex overflow-hidden rounded-lg border">
             {VIEWS.map((v) => (
               <button
@@ -231,7 +203,6 @@ export default function App() {
           onCreate={() => openCreate()}
           onReset={() => {
             setMeetings(makeSeed());
-            setDismissed([]);
             setSidebarOpen(false);
             notify('Reuniones de ejemplo restablecidas');
           }}
@@ -253,24 +224,6 @@ export default function App() {
           </div>
         </main>
 
-        {/* Propuestas: encima de la pantalla en celular, columna al costado desde md */}
-        {showProposals && (
-          <div
-            className="fixed inset-0 z-40 flex justify-end bg-black/30 md:static md:z-auto md:bg-transparent [&>aside]:max-w-full [&>aside]:bg-white"
-            onClick={(e) => e.target === e.currentTarget && setShowProposals(false)}
-          >
-            <ProposalsPanel
-              proposals={proposals}
-              people={people}
-              onSchedule={(p, it) => {
-                setShowProposals(false);
-                scheduleProposal(p, it);
-              }}
-              onDismiss={(pid) => setDismissed((d) => [...d, pid])}
-              onClose={() => setShowProposals(false)}
-            />
-          </div>
-        )}
       </div>
 
       {/* Botón flotante para crear en celular */}

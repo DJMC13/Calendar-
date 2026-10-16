@@ -97,14 +97,82 @@ export const AREAS = [
   { id: 'a-dis', name: 'Diseño Grafico' },
 ];
 
+// Proyecto → Procesos → Tareas. Por ahora se definen aquí (sin pantalla de
+// mantenimiento). En la ficha de reunión se elige el proceso y sus tareas;
+// si la tarea no está en la lista se escribe en «Otra tarea».
 const T = todayKey();
 export const PROJECTS = [
-  { id: 'p1', name: 'Módulo Reclutamiento', color: '#1a73e8', deadline: addDays(T, 9) },
-  { id: 'p2', name: 'Portal Postulantes', color: '#0b8043', deadline: addDays(T, 6) },
-  { id: 'p3', name: 'Dashboard Intranet', color: '#8e24aa', deadline: addDays(T, 5) },
+  {
+    id: 'p1', name: 'Módulo Reclutamiento', color: '#1a73e8', deadline: addDays(T, 9),
+    processes: [
+      {
+        id: 'pr-1a', name: 'Registro de postulantes',
+        tasks: [
+          { id: 't-1a1', text: 'Cambiar de color el botón enviar' },
+          { id: 't-1a2', text: 'Solucionar el error al guardar datos de postulante' },
+          { id: 't-1a3', text: 'Validar campos obligatorios del registro' },
+        ],
+      },
+      {
+        id: 'pr-1b', name: 'Evaluación de candidatos',
+        tasks: [
+          { id: 't-1b1', text: 'Agregar filtro por puesto' },
+          { id: 't-1b2', text: 'Registrar resultado de entrevista' },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'p2', name: 'Portal Postulantes', color: '#0b8043', deadline: addDays(T, 6),
+    processes: [
+      {
+        id: 'pr-2a', name: 'Formulario de postulación',
+        tasks: [
+          { id: 't-2a1', text: 'Validar campos obligatorios' },
+          { id: 't-2a2', text: 'Mensaje de confirmación al enviar' },
+          { id: 't-2a3', text: 'Definir textos de la pantalla de postulación' },
+          { id: 't-2a4', text: 'Aprobar diseño del botón enviar' },
+        ],
+      },
+      {
+        id: 'pr-2b', name: 'Carga de documentos',
+        tasks: [
+          { id: 't-2b1', text: 'Revisar flujo de carga de CV' },
+          { id: 't-2b2', text: 'Limitar tamaño de archivos adjuntos' },
+        ],
+      },
+      {
+        id: 'pr-2c', name: 'Permisos y accesos',
+        tasks: [
+          { id: 't-2c1', text: 'Revisar permisos del rol reclutador' },
+          { id: 't-2c2', text: 'Configurar acceso de administrador' },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'p3', name: 'Dashboard Intranet', color: '#8e24aa', deadline: addDays(T, 5),
+    processes: [
+      {
+        id: 'pr-3a', name: 'Indicadores',
+        tasks: [
+          { id: 't-3a1', text: 'Ajustar filtros del dashboard' },
+          { id: 't-3a2', text: 'Agregar gráfico de avance' },
+        ],
+      },
+      {
+        id: 'pr-3b', name: 'Exportación',
+        tasks: [
+          { id: 't-3b1', text: 'Corregir exportación a Excel' },
+          { id: 't-3b2', text: 'Exportar reporte a PDF' },
+        ],
+      },
+    ],
+  },
 ];
 
 export const projectById = (id) => PROJECTS.find((p) => p.id === id);
+export const processById = (projectId, processId) => projectById(projectId)?.processes.find((p) => p.id === processId);
 export const areaById = (id) => AREAS.find((a) => a.id === id);
 
 export const RECURRENCES = [
@@ -116,12 +184,16 @@ export const RECURRENCES = [
 ];
 
 /* ------------------------------ Estados -------------------------------- */
-// Estado de cada requerimiento: 'completado' | 'no_completado' | 'pendiente'
-//   - pendiente    = no se pudo atender (p. ej. una emergencia); motivo opcional
+// Estado de cada requerimiento: null (sin marcar) | 'completado' | 'no_completado' | 'pendiente'
+//   - null          = todavía no se revisa (estado inicial)
+//   - pendiente     = no se pudo atender (p. ej. una emergencia); motivo opcional
 //   - no_completado = se intentó y no se terminó; motivo OBLIGATORIO
 // Estado de la reunión: 'Programada' | 'Completado' | 'No completado' | 'Pendiente'
 export const REQ_STATES = ['completado', 'no_completado', 'pendiente'];
 export const isDone = (r) => r.state === 'completado';
+
+// Nuevo requerimiento (sin marcar). taskId = null cuando es «Otra tarea».
+export const newReq = (text, processId, taskId = null) => ({ id: uid(), text, processId, taskId, state: null, obs: '' });
 
 // Resultado global (automático) a partir del checklist
 export const meetingResult = (m) => {
@@ -151,10 +223,15 @@ export function expandRecurrence(base) {
 
 /* --------------------- Requerimientos pendientes ----------------------- */
 // Pendientes = requerimientos NO completados, de reuniones ya finalizadas
-// del mismo proyecto, que todavía no se arrastraron a otra reunión.
-export function pendingFor(meetings, projectId, date, excludeId) {
+// del MISMO proyecto y del MISMO proceso, que todavía no se arrastraron.
+// Si se pasa fromMeetingId (reprogramación) solo se toman los de esa reunión.
+export function pendingFor(meetings, { projectId, processId, date, fromMeetingId }) {
   return meetings
-    .filter((m) => m.projectId === projectId && m.id !== excludeId && m.status !== 'Programada' && m.date <= date)
+    .filter((m) =>
+      fromMeetingId
+        ? m.id === fromMeetingId
+        : m.projectId === projectId && m.processId === processId && m.status !== 'Programada' && m.date <= date
+    )
     .flatMap((m) =>
       m.reqs
         .filter((r) => !isDone(r) && !r.carried)
@@ -162,11 +239,17 @@ export function pendingFor(meetings, projectId, date, excludeId) {
     );
 }
 
-// Copia de un requerimiento pendiente para la nueva reunión.
+// Tareas del catálogo que ya se completaron en alguna reunión del proceso
+export const doneTaskIds = (meetings, processId) =>
+  new Set(meetings.filter((m) => m.processId === processId).flatMap((m) => m.reqs.filter((r) => isDone(r) && r.taskId).map((r) => r.taskId)));
+
+// Copia de un requerimiento pendiente para la nueva reunión (vuelve a quedar sin marcar).
 export const carryCopy = (r, src) => ({
   id: uid(),
   text: r.text,
-  state: 'pendiente',
+  processId: r.processId,
+  taskId: r.taskId ?? null,
+  state: null,
   obs: '',
   carriedFrom: src.id ?? src.meetingId,
   carriedFromTitle: src.title ?? src.meetingTitle,
@@ -263,15 +346,22 @@ export function buildProposals(meetings, people, today = todayKey()) {
 }
 
 /* ------------------------------ Datos demo ----------------------------- */
+// Cada reunión pertenece a UN proyecto y a UN proceso; sus requerimientos
+// son tareas de ese proceso (o «Otra tarea» escrita a mano).
 export function makeSeed() {
   const t = todayKey();
-  const R = (text, state = 'pendiente', obs = '') => ({ id: uid(), text, state, obs });
   const [p1, p2, p3] = PROJECTS;
+  // R(proceso, índice de tarea, estado, observación)
+  const R = (proc, i, state = null, obs = '') => ({ ...newReq(proc.tasks[i].text, proc.id, proc.tasks[i].id), state, obs });
+  const [regPost, evalCand] = p1.processes;
+  const [formPost, , permisos] = p2.processes;
+  const [, exportacion] = p3.processes;
 
   const series = expandRecurrence({
     id: 'seed-series',
-    title: 'Seguimiento semanal · Módulo Reclutamiento',
+    title: 'Seguimiento semanal · Evaluación de candidatos',
     projectId: p1.id,
+    processId: evalCand.id,
     areaIds: ['a-front', 'a-back'],
     collabIds: [],
     date: addDays(t, 1),
@@ -280,44 +370,44 @@ export function makeSeed() {
     recurrence: 'weekly',
     deadline: p1.deadline,
     status: 'Programada',
-    reqs: [],
+    reqs: [R(evalCand, 0), R(evalCand, 1)],
   });
 
   return [
     {
-      id: 'm1', title: 'Revisión de filtros y exportación', projectId: p3.id,
+      id: 'm1', title: 'Revisión de exportación', projectId: p3.id, processId: exportacion.id,
       areaIds: ['a-front', 'a-qa'], collabIds: [],
       date: addDays(t, -3), start: '10:00', end: '11:00', recurrence: 'none', deadline: p3.deadline,
       status: 'No completado',
-      reqs: [R('Ajustar filtros del dashboard', 'completado'), R('Corregir exportación a Excel', 'no_completado', 'Faltan definir las columnas con RRHH')],
+      reqs: [R(exportacion, 1, 'completado'), R(exportacion, 0, 'no_completado', 'Faltan definir las columnas con RRHH')],
     },
     {
-      id: 'm5', title: 'Revisión de permisos de postulantes', projectId: p2.id,
+      id: 'm5', title: 'Revisión de permisos de postulantes', projectId: p2.id, processId: permisos.id,
       areaIds: ['a-back', 'a-front'], collabIds: [],
       date: addDays(t, -2), start: '11:00', end: '12:00', recurrence: 'none', deadline: p2.deadline,
       status: 'Pendiente',
-      reqs: [R('Revisar permisos del rol reclutador', 'pendiente', 'Emergencia: incidente en producción, la reunión no se realizó')],
+      reqs: [R(permisos, 0, 'pendiente', 'Emergencia: incidente en producción, la reunión no se realizó')],
     },
     {
-      id: 'm2', title: 'Cierre del formulario de postulantes', projectId: p2.id,
+      id: 'm2', title: 'Cierre del formulario de postulantes', projectId: p2.id, processId: formPost.id,
       areaIds: ['a-front', 'a-rrhh'], collabIds: [],
       date: addDays(t, -1), start: '15:00', end: '16:00', recurrence: 'none', deadline: p2.deadline,
       status: 'Completado',
-      reqs: [R('Validar campos obligatorios', 'completado'), R('Mensaje de confirmación al enviar', 'completado')],
+      reqs: [R(formPost, 0, 'completado'), R(formPost, 1, 'completado')],
     },
     {
-      id: 'm3', title: 'Sprint review · Módulo Reclutamiento', projectId: p1.id,
+      id: 'm3', title: 'Sprint review · Registro de postulantes', projectId: p1.id, processId: regPost.id,
       areaIds: ['a-front', 'a-back', 'a-qa'], collabIds: [],
       date: t, start: '15:00', end: '16:00', recurrence: 'none', deadline: p1.deadline,
       status: 'Programada',
-      reqs: [R('Cambiar de color el botón enviar'), R('Soluciona el error al guardar datos de postulante')],
+      reqs: [R(regPost, 0), R(regPost, 1)],
     },
     {
-      id: 'm4', title: 'Coordinación con RRHH', projectId: p2.id,
+      id: 'm4', title: 'Coordinación con RRHH', projectId: p2.id, processId: formPost.id,
       areaIds: ['a-rrhh', 'a-dis'], collabIds: [],
       date: addDays(t, 2), start: '09:00', end: '10:00', recurrence: 'none', deadline: p2.deadline,
       status: 'Programada',
-      reqs: [R('Definir textos de la pantalla de postulación'), R('Aprobar diseño del botón enviar'), R('Revisar flujo de carga de CV')],
+      reqs: [R(formPost, 2), R(formPost, 3)],
     },
     ...series,
   ];

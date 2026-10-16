@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Badge, Modal, statusTone } from './ui.jsx';
-import { AREAS, cmpMeeting, fmt12, fmtLong, fmtShort, isDone, meetingResult, projectById } from '../data.js';
+import { AREAS, cmpMeeting, fmt12, fmtLong, fmtShort, isDone, meetingResult, processById, projectById } from '../data.js';
 
 // Tres estados por requerimiento. «Pendiente» = no se pudo atender (p. ej. una emergencia).
 const STATES = [
@@ -14,23 +14,31 @@ const STATE_TONE = { completado: 'green', no_completado: 'red', pendiente: 'ambe
 export default function MeetingDetail({ meeting: m, meetings, people, onClose, onEdit, onSetState, onObs, onFinish, onReprogram, onCarry }) {
   const [errors, setErrors] = useState({});
   const project = projectById(m.projectId);
+  const process = processById(m.projectId, m.processId);
   const finished = m.status !== 'Programada';
   const pending = m.reqs.filter((r) => !isDone(r) && !r.carried);
   const done = m.reqs.filter(isDone).length;
   const result = meetingResult(m);
   const names = m.collabIds.map((id) => people.find((p) => p.id === id)?.name).filter(Boolean);
 
-  // siguiente reunión programada del mismo proyecto (para pasarle los pendientes)
+  // siguiente reunión programada del mismo proyecto Y proceso (para pasarle los pendientes)
   const next = useMemo(
-    () => meetings.filter((x) => x.projectId === m.projectId && x.id !== m.id && x.status === 'Programada' && x.date >= m.date).sort(cmpMeeting)[0],
+    () =>
+      meetings
+        .filter((x) => x.projectId === m.projectId && x.processId === m.processId && x.id !== m.id && x.status === 'Programada' && x.date >= m.date)
+        .sort(cmpMeeting)[0],
     [meetings, m]
   );
 
+  // al corregir un requerimiento se borra su mensaje de error
+  const clearErr = (rid) => setErrors(({ [rid]: _, ...rest }) => rest);
+
   const finish = () => {
     const errs = {};
-    // «No completado» exige motivo; «Pendiente» lo deja opcional
+    // Todo requerimiento debe marcarse. «No completado» exige motivo; «Pendiente» lo deja opcional
     m.reqs.forEach((r) => {
-      if (r.state === 'no_completado' && !(r.obs || '').trim()) errs[r.id] = true;
+      if (!r.state) errs[r.id] = 'Marca un estado para este requerimiento.';
+      else if (r.state === 'no_completado' && !(r.obs || '').trim()) errs[r.id] = 'Indica el motivo para poder finalizar la reunión.';
     });
     setErrors(errs);
     if (Object.keys(errs).length === 0) onFinish(m.id);
@@ -50,6 +58,7 @@ export default function MeetingDetail({ meeting: m, meetings, people, onClose, o
 
         <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
           <Badge tone="gray"><span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ background: project.color }} />{project.name}</Badge>
+          {process && <Badge tone="blue">Proceso: {process.name}</Badge>}
           <Badge tone={statusTone(m.status)}>Reunión: {m.status}</Badge>
           {finished && result && <Badge tone={statusTone(result)}>Requerimientos (global): {result}</Badge>}
           {m.deadline && <Badge tone="amber">Fecha límite: {fmtShort(m.deadline)}</Badge>}
@@ -96,7 +105,10 @@ export default function MeetingDetail({ meeting: m, meetings, people, onClose, o
                     <button
                       key={s.id}
                       type="button"
-                      onClick={() => onSetState(m.id, r.id, s.id)}
+                      onClick={() => {
+                        onSetState(m.id, r.id, r.state === s.id ? null : s.id);
+                        clearErr(r.id);
+                      }}
                       className={`rounded-full border px-3 py-1 text-xs transition ${r.state === s.id ? s.on : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}
                     >
                       {s.label}
@@ -105,13 +117,16 @@ export default function MeetingDetail({ meeting: m, meetings, people, onClose, o
                 </div>
               )}
 
-              {/* Observación: obligatoria si «No completado», opcional si «Pendiente» */}
-              {!finished && r.state !== 'completado' && (
+              {/* Observación: aparece solo al marcar «No completado» (obligatoria) o «Pendiente» (opcional) */}
+              {!finished && (r.state === 'no_completado' || r.state === 'pendiente') && (
                 <div className="mt-2">
                   <textarea
                     rows={2}
                     value={r.obs}
-                    onChange={(e) => onObs(m.id, r.id, e.target.value)}
+                    onChange={(e) => {
+                      onObs(m.id, r.id, e.target.value);
+                      clearErr(r.id);
+                    }}
                     placeholder={
                       r.state === 'no_completado'
                         ? 'Observación: motivo por el que no se terminó (obligatorio)'
@@ -119,9 +134,9 @@ export default function MeetingDetail({ meeting: m, meetings, people, onClose, o
                     }
                     className={`w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-1 ${errors[r.id] ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:border-blue-600 focus:ring-blue-600'}`}
                   />
-                  {errors[r.id] && <span className="text-xs text-red-600">Indica el motivo para poder finalizar la reunión.</span>}
                 </div>
               )}
+              {errors[r.id] && <span className="mt-1 block text-xs text-red-600">{errors[r.id]}</span>}
               {finished && !isDone(r) && r.obs && <div className="mt-2 text-xs text-gray-600">Observación: {r.obs}</div>}
             </div>
           ))}
@@ -137,7 +152,7 @@ export default function MeetingDetail({ meeting: m, meetings, people, onClose, o
         {finished && pending.length > 0 && (
           <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
             <div className="text-sm font-semibold text-amber-900">Quedan {pending.length} requerimiento(s) sin terminar</div>
-            <p className="mt-1 text-xs text-amber-800">Puedes reprogramar una reunión nueva (jalará los pendientes) o pasarlos a la siguiente reunión del proyecto.</p>
+            <p className="mt-1 text-xs text-amber-800">Puedes reprogramar esta reunión (solo jalará sus propios pendientes) o pasarlos a la siguiente reunión del mismo proceso.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button onClick={() => onReprogram(m.id)} className="rounded-full bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
                 Reprogramar reunión
@@ -145,10 +160,10 @@ export default function MeetingDetail({ meeting: m, meetings, people, onClose, o
               <button
                 disabled={!next}
                 onClick={() => onCarry(m.id)}
-                title={next ? '' : 'No hay otra reunión programada para este proyecto'}
+                title={next ? '' : 'No hay otra reunión programada para este proceso'}
                 className="rounded-full border border-amber-400 bg-white px-4 py-2 text-sm hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {next ? `Pasar a «${next.title}» (${fmtShort(next.date)})` : 'Sin próxima reunión del proyecto'}
+                {next ? `Pasar a «${next.title}» (${fmtShort(next.date)})` : 'Sin próxima reunión del proceso'}
               </button>
             </div>
           </div>
