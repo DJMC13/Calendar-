@@ -199,7 +199,7 @@ export default function App() {
             aria-label="Proponer reuniones"
             className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium sm:px-4 ${showProposals ? 'border-blue-600 bg-blue-50 text-blue-700' : 'hover:bg-gray-50'}`}
           >
-            ✨ <span className="hidden sm:inline">Proponer reuniones</span>
+             <span className="hidden sm:inline">Proponer reuniones</span>
             {proposals.length > 0 && <span className="rounded-full bg-red-500 px-1.5 text-xs text-white">{proposals.length}</span>}
           </button>
           <div className="flex overflow-hidden rounded-lg border">
