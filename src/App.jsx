@@ -18,11 +18,13 @@ const VIEWS = [
 export default function App() {
   const [meetings, setMeetings] = useState(makeSeed);
   const [people, setPeople] = useState([]); // colaboradores: se agregan a mano ({ id, name, areaId })
-  const [view, setView] = useState('week');
+  // en celular se empieza en la vista Día
+  const [view, setView] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 768 ? 'day' : 'week'));
   const [cursor, setCursor] = useState(todayKey());
   const [hidden, setHidden] = useState([]);
   const [modal, setModal] = useState(null); // { type:'form'|'detail', ... }
   const [showProposals, setShowProposals] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // menú lateral en celular/tablet
   const [dismissed, setDismissed] = useState([]);
   const [toast, setToast] = useState(null);
 
@@ -66,8 +68,10 @@ export default function App() {
   })();
 
   /* ------------------------------ formularios --------------------------- */
-  const openCreate = (date = cursor, start = '09:00') =>
+  const openCreate = (date = cursor, start = '09:00') => {
+    setSidebarOpen(false);
     setModal({ type: 'form', key: uid(), draft: { date, start, end: fromMin(Math.min(toMin(start) + 60, 24 * 60 - 15)) } });
+  };
 
   const saveForm = ({ items, pulled, editingId }) => {
     setMeetings((prev) => {
@@ -162,27 +166,40 @@ export default function App() {
   const detailMeeting = modal?.type === 'detail' ? meetings.find((m) => m.id === modal.id) : null;
   const editingMeeting = modal?.type === 'form' && modal.editingId ? meetings.find((m) => m.id === modal.editingId) : null;
 
+  // ancho mínimo del calendario en pantallas chicas (se desplaza de lado)
+  const minW = view === 'week' ? 'min-w-[720px]' : view === 'month' ? 'min-w-[520px]' : '';
+
   return (
     <div className="flex h-full flex-col">
       {/* Cabecera */}
-      <header className="flex items-center gap-3 border-b px-4 py-2">
-        <div className="mr-4 flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-lg font-bold text-white">{new Date().getDate()}</div>
-          <span className="text-xl text-gray-700">Calendario de Reuniones</span>
-        </div>
-        <button onClick={() => setCursor(todayKey())} className="rounded-lg border px-4 py-1.5 text-sm font-medium hover:bg-gray-50">Hoy</button>
-        <div className="flex text-gray-600">
-          <button onClick={() => step(-1)} className="rounded-full px-3 py-1 text-lg hover:bg-gray-100">‹</button>
-          <button onClick={() => step(1)} className="rounded-full px-3 py-1 text-lg hover:bg-gray-100">›</button>
-        </div>
-        <h1 className="text-xl first-letter:uppercase">{title}</h1>
+      <header className="flex flex-wrap items-center gap-2 border-b px-3 py-2 sm:gap-3 sm:px-4">
+        <button
+          onClick={() => setSidebarOpen(true)}
+          aria-label="Abrir menú"
+          className="rounded-full px-2.5 py-1 text-xl text-gray-700 hover:bg-gray-100 lg:hidden"
+        >
+          ☰
+        </button>
 
-        <div className="ml-auto flex items-center gap-3">
+        <div className="flex items-center gap-2 lg:mr-4">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-lg font-bold text-white">{new Date().getDate()}</div>
+          <span className="hidden text-xl text-gray-700 lg:inline">Calendario de Reuniones</span>
+        </div>
+
+        <button onClick={() => setCursor(todayKey())} className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50 sm:px-4">Hoy</button>
+        <div className="flex text-gray-600">
+          <button onClick={() => step(-1)} aria-label="Anterior" className="rounded-full px-3 py-1 text-lg hover:bg-gray-100">‹</button>
+          <button onClick={() => step(1)} aria-label="Siguiente" className="rounded-full px-3 py-1 text-lg hover:bg-gray-100">›</button>
+        </div>
+        <h1 className="min-w-0 flex-1 truncate text-base first-letter:uppercase sm:flex-none sm:text-xl">{title}</h1>
+
+        <div className="ml-auto flex items-center gap-2 sm:gap-3">
           <button
             onClick={() => setShowProposals((s) => !s)}
-            className={`flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-medium ${showProposals ? 'border-blue-600 bg-blue-50 text-blue-700' : 'hover:bg-gray-50'}`}
+            aria-label="Proponer reuniones"
+            className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium sm:px-4 ${showProposals ? 'border-blue-600 bg-blue-50 text-blue-700' : 'hover:bg-gray-50'}`}
           >
-            ✨ Proponer reuniones
+            ✨ <span className="hidden sm:inline">Proponer reuniones</span>
             {proposals.length > 0 && <span className="rounded-full bg-red-500 px-1.5 text-xs text-white">{proposals.length}</span>}
           </button>
           <div className="flex overflow-hidden rounded-lg border">
@@ -190,7 +207,7 @@ export default function App() {
               <button
                 key={v.id}
                 onClick={() => setView(v.id)}
-                className={`px-4 py-1.5 text-sm ${view === v.id ? 'bg-blue-50 font-medium text-blue-700' : 'hover:bg-gray-50'}`}
+                className={`px-2.5 py-1.5 text-sm sm:px-4 ${view === v.id ? 'bg-blue-50 font-medium text-blue-700' : 'hover:bg-gray-50'}`}
               >
                 {v.label}
               </button>
@@ -201,43 +218,69 @@ export default function App() {
 
       <div className="flex min-h-0 flex-1">
         <Sidebar
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
           cursor={cursor}
           meetings={meetings}
           hidden={hidden}
           onToggleProject={(id) => setHidden((h) => (h.includes(id) ? h.filter((x) => x !== id) : [...h, id]))}
-          onPick={setCursor}
+          onPick={(d) => {
+            setCursor(d);
+            setSidebarOpen(false);
+          }}
           onCreate={() => openCreate()}
           onReset={() => {
             setMeetings(makeSeed());
             setDismissed([]);
+            setSidebarOpen(false);
             notify('Reuniones de ejemplo restablecidas');
           }}
         />
 
-        <main className="min-w-0 flex-1">
-          <Calendar
-            view={view}
-            cursor={cursor}
-            meetings={visible}
-            onCreate={openCreate}
-            onOpen={(id) => setModal({ type: 'detail', id })}
-            onPickDay={(d) => {
-              setCursor(d);
-              setView('day');
-            }}
-          />
+        <main className="min-w-0 flex-1 overflow-auto">
+          <div className={`h-full ${minW} md:min-w-0`}>
+            <Calendar
+              view={view}
+              cursor={cursor}
+              meetings={visible}
+              onCreate={openCreate}
+              onOpen={(id) => setModal({ type: 'detail', id })}
+              onPickDay={(d) => {
+                setCursor(d);
+                setView('day');
+              }}
+            />
+          </div>
         </main>
 
+        {/* Propuestas: encima de la pantalla en celular, columna al costado desde md */}
         {showProposals && (
-          <ProposalsPanel
-            proposals={proposals}
-            people={people}
-            onSchedule={scheduleProposal}
-            onDismiss={(pid) => setDismissed((d) => [...d, pid])}
-            onClose={() => setShowProposals(false)}
-          />
+          <div
+            className="fixed inset-0 z-40 flex justify-end bg-black/30 md:static md:z-auto md:bg-transparent [&>aside]:max-w-full [&>aside]:bg-white"
+            onClick={(e) => e.target === e.currentTarget && setShowProposals(false)}
+          >
+            <ProposalsPanel
+              proposals={proposals}
+              people={people}
+              onSchedule={(p, it) => {
+                setShowProposals(false);
+                scheduleProposal(p, it);
+              }}
+              onDismiss={(pid) => setDismissed((d) => [...d, pid])}
+              onClose={() => setShowProposals(false)}
+            />
+          </div>
         )}
       </div>
+
+      {/* Botón flotante para crear en celular */}
+      <button
+        onClick={() => openCreate()}
+        aria-label="Crear reunión"
+        className="fixed bottom-5 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-3xl leading-none text-white shadow-lg hover:bg-blue-700 md:hidden"
+      >
+        ＋
+      </button>
 
       {/* Modales */}
       {modal?.type === 'form' && (
