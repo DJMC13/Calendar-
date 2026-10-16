@@ -27,7 +27,7 @@ export default function MeetingForm({ draft, editing, meetings, people, onAddPer
           start: '09:00',
           end: '10:00',
           recurrence: 'none',
-          deadline: PROJECTS[0].deadline,
+          deadline: PROJECTS[0].processes[0].deadline,
           ...draft,
         }
   );
@@ -61,13 +61,14 @@ export default function MeetingForm({ draft, editing, meetings, people, onAddPer
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   // Al cambiar de proyecto o proceso se quitan las tareas del catálogo anterior (no se mezclan)
   const changeProcess = (processId) => {
-    setF((p) => ({ ...p, processId }));
+    setF((p) => ({ ...p, processId, deadline: processById(p.projectId, processId)?.deadline ?? p.deadline }));
     setOwn((list) => list.filter((r) => !r.taskId).map((r) => ({ ...r, processId })));
     setRemoved([]);
   };
   const changeProject = (projectId) => {
-    const first = projectById(projectId).processes[0].id;
-    setF((p) => ({ ...p, projectId, processId: first, deadline: projectById(projectId).deadline }));
+    const firstProc = projectById(projectId).processes[0];
+    const first = firstProc.id;
+    setF((p) => ({ ...p, projectId, processId: first, deadline: firstProc.deadline }));
     setOwn((list) => list.filter((r) => !r.taskId).map((r) => ({ ...r, processId: first })));
     setRemoved([]);
   };

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Badge, projectTone } from './ui.jsx';
-import { DAYS_SHORT, MONTHS, PROJECTS, addDays, addMonths, fromKey, monthStart, projectStats, startOfWeek, todayKey } from '../data.js';
+import { DAYS_SHORT, MONTHS, PROJECTS, addDays, addMonths, fromKey, monthStart, processStats, projectStats, startOfWeek, todayKey } from '../data.js';
 
 function MiniCalendar({ cursor, meetings, onPick }) {
   const [shown, setShown] = useState(monthStart(cursor));
@@ -48,7 +48,7 @@ function MiniCalendar({ cursor, meetings, onPick }) {
  * Barra lateral. Desde lg (≥1024px) es una columna fija.
  * En pantallas más chicas es un menú deslizable que se abre con ☰.
  */
-export default function Sidebar({ open, onClose, cursor, meetings, hidden, onToggleProject, onPick, onCreate, onReset }) {
+export default function Sidebar({ open, onClose, cursor, meetings, hidden, onToggleProcess, onPick, onCreate, onReset }) {
   return (
     <>
       {/* fondo oscuro (solo celular/tablet) */}
@@ -69,27 +69,45 @@ export default function Sidebar({ open, onClose, cursor, meetings, hidden, onTog
 
         <MiniCalendar cursor={cursor} meetings={meetings} onPick={onPick} />
 
+        {/* Proyecto → sus procesos (módulos/vistas) con avance y filtro */}
         <div>
           <div className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Proyectos</div>
           <div className="flex flex-col gap-3">
-            {PROJECTS.map((p) => {
-              const s = projectStats(p, meetings);
-              const pct = s.total ? Math.round((s.done / s.total) * 100) : 0;
+            {PROJECTS.map((pj) => {
+              const ps = projectStats(pj, meetings);
+              const pjPct = ps.total ? Math.round((ps.done / ps.total) * 100) : 0;
               return (
-                <div key={p.id} className="rounded-lg border p-2">
-                  <label className="flex cursor-pointer items-center gap-2 text-sm">
-                    <input type="checkbox" checked={!hidden.includes(p.id)} onChange={() => onToggleProject(p.id)} style={{ accentColor: p.color }} />
-                    <span className="truncate font-medium">{p.name}</span>
-                  </label>
-                  <div className="mt-2 flex items-center justify-between">
-                    <Badge tone={projectTone(s.status)}>{s.status}</Badge>
-                    <span className="text-[11px] text-gray-500">{s.daysLeft < 0 ? `vencido ${-s.daysLeft}d` : `límite en ${s.daysLeft}d`}</span>
+                <div key={pj.id} className="rounded-lg border p-2">
+                  <div className="flex items-center justify-between">
+                    <span className="truncate text-sm font-semibold">{pj.name}</span>
+                    <span className="text-[11px] text-gray-500">{pjPct}% · {ps.done}/{ps.total}</span>
                   </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200">
-                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: p.color }} />
-                  </div>
-                  <div className="mt-1 text-[11px] text-gray-500">
-                    {s.done}/{s.total} requerimientos · {s.pending} pendientes
+                  <div className="mt-1 text-[11px] text-gray-500">Procesos</div>
+
+                  <div className="mt-1 flex flex-col gap-2">
+                    {pj.processes.map((pr) => {
+                      const s = processStats(pr, meetings);
+                      const pct = s.total ? Math.round((s.done / s.total) * 100) : 0;
+                      return (
+                        <div key={pr.id} className="rounded-md bg-gray-50 p-2">
+                          <label className="flex cursor-pointer items-center gap-2 text-sm">
+                            <input type="checkbox" checked={!hidden.includes(pr.id)} onChange={() => onToggleProcess(pr.id)} style={{ accentColor: pr.color }} />
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: pr.color }} />
+                            <span className="truncate font-medium">{pr.name}</span>
+                          </label>
+                          <div className="mt-1.5 flex items-center justify-between">
+                            <Badge tone={projectTone(s.status)}>{s.status}</Badge>
+                            <span className="text-[11px] text-gray-500">{s.daysLeft < 0 ? `vencido ${-s.daysLeft}d` : `límite en ${s.daysLeft}d`}</span>
+                          </div>
+                          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-gray-200">
+                            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pr.color }} />
+                          </div>
+                          <div className="mt-1 text-[11px] text-gray-500">
+                            {s.done}/{s.total} tareas · {s.pending} pendientes
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );

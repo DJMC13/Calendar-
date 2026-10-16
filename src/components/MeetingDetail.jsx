@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Badge, Modal, statusTone } from './ui.jsx';
-import { AREAS, cmpMeeting, fmt12, fmtLong, fmtShort, isDone, meetingResult, processById, projectById } from '../data.js';
+import { AREAS, cmpMeeting, fmt12, fmtLong, fmtShort, isDone, meetingColor, meetingResult, processById, projectById } from '../data.js';
 
 // Tres estados por requerimiento. «Pendiente» = no se pudo atender (p. ej. una emergencia).
 const STATES = [
@@ -46,7 +46,7 @@ export default function MeetingDetail({ meeting: m, meetings, people, onClose, o
 
   return (
     <Modal onClose={onClose} width="max-w-xl">
-      <div className="h-2 rounded-t-2xl" style={{ background: project.color }} />
+      <div className="h-2 rounded-t-2xl" style={{ background: meetingColor(m) }} />
       <div className="p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -57,8 +57,8 @@ export default function MeetingDetail({ meeting: m, meetings, people, onClose, o
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-          <Badge tone="gray"><span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ background: project.color }} />{project.name}</Badge>
-          {process && <Badge tone="blue">Proceso: {process.name}</Badge>}
+          <Badge tone="gray">Proyecto: {project.name}</Badge>
+          {process && <Badge tone="gray"><span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ background: process.color }} />Proceso: {process.name}</Badge>}
           <Badge tone={statusTone(m.status)}>Reunión: {m.status}</Badge>
           {finished && result && <Badge tone={statusTone(result)}>Requerimientos (global): {result}</Badge>}
           {m.deadline && <Badge tone="amber">Fecha límite: {fmtShort(m.deadline)}</Badge>}

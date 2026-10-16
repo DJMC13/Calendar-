@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { DAYS_SHORT, addDays, fromKey, monthStart, projectById, startOfWeek, todayKey, toMin, cmpMeeting } from '../data.js';
+import { DAYS_SHORT, addDays, fromKey, meetingColor, monthStart, processById, startOfWeek, todayKey, toMin, cmpMeeting } from '../data.js';
 
 const FIRST_HOUR = 7;
 const HOURS = Array.from({ length: 15 }, (_, i) => FIRST_HOUR + i); // 07:00 – 21:00
@@ -81,7 +81,7 @@ function MonthView({ cursor, meetings, onCreate, onOpen, onPickDay }) {
                     onOpen(m.id);
                   }}
                   className="mb-0.5 flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] text-white hover:brightness-95"
-                  style={{ background: projectById(m.projectId).color, opacity: m.status === 'Completado' ? 0.65 : 1 }}
+                  style={{ background: meetingColor(m), opacity: m.status === 'Completado' ? 0.65 : 1 }}
                 >
                   <span className="truncate">{icon(m)}{m.start} {m.title}</span>
                 </button>
@@ -167,13 +167,13 @@ function TimeGrid({ days, meetings, onCreate, onOpen }) {
                         height,
                         left: `calc(${(col / cols) * 100}% + 1px)`,
                         width: `calc(${100 / cols}% - 3px)`,
-                        background: projectById(m.projectId).color,
+                        background: meetingColor(m),
                         opacity: m.status === 'Completado' ? 0.65 : 1,
                       }}
                     >
                       <div className="truncate font-medium">{icon(m)}{m.title}</div>
                       <div className="truncate opacity-90">{m.start} – {m.end}</div>
-                      {height > 52 && <div className="truncate opacity-90">{projectById(m.projectId).name}</div>}
+                      {height > 52 && <div className="truncate opacity-90">{processById(m.projectId, m.processId)?.name}</div>}
                     </button>
                   );
                 })}

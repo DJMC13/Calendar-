@@ -97,74 +97,45 @@ export const AREAS = [
   { id: 'a-dis', name: 'Diseño Grafico' },
 ];
 
-// Proyecto → Procesos → Tareas. Por ahora se definen aquí (sin pantalla de
-// mantenimiento). En la ficha de reunión se elige el proceso y sus tareas;
-// si la tarea no está en la lista se escribe en «Otra tarea».
+// Proyecto → Procesos → Tareas.
+//   Proyecto = el sistema completo (ej. Intranet)
+//   Proceso  = cada módulo o vista que se trabaja (ej. Dashboard)
+//   Tareas   = lo que se revisa en la checklist de la reunión
+// Por ahora se definen aquí (sin pantalla de mantenimiento). Cada proceso
+// tiene su color (para el calendario) y su fecha límite.
 const T = todayKey();
 export const PROJECTS = [
   {
-    id: 'p1', name: 'Módulo Reclutamiento', color: '#1a73e8', deadline: addDays(T, 9),
+    id: 'p1', name: 'Intranet', color: '#1a73e8', deadline: addDays(T, 9),
     processes: [
       {
-        id: 'pr-1a', name: 'Registro de postulantes',
+        id: 'pr-dash', name: 'Dashboard', color: '#8e24aa', deadline: addDays(T, 5),
         tasks: [
-          { id: 't-1a1', text: 'Cambiar de color el botón enviar' },
-          { id: 't-1a2', text: 'Solucionar el error al guardar datos de postulante' },
-          { id: 't-1a3', text: 'Validar campos obligatorios del registro' },
+          { id: 't-d1', text: 'Ajustar filtros del dashboard' },
+          { id: 't-d2', text: 'Agregar gráfico de avance' },
+          { id: 't-d3', text: 'Corregir exportación a Excel' },
+          { id: 't-d4', text: 'Exportar reporte a PDF' },
         ],
       },
       {
-        id: 'pr-1b', name: 'Evaluación de candidatos',
+        id: 'pr-recl', name: 'Módulo de Reclutamiento', color: '#1a73e8', deadline: addDays(T, 9),
         tasks: [
-          { id: 't-1b1', text: 'Agregar filtro por puesto' },
-          { id: 't-1b2', text: 'Registrar resultado de entrevista' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'p2', name: 'Portal Postulantes', color: '#0b8043', deadline: addDays(T, 6),
-    processes: [
-      {
-        id: 'pr-2a', name: 'Formulario de postulación',
-        tasks: [
-          { id: 't-2a1', text: 'Validar campos obligatorios' },
-          { id: 't-2a2', text: 'Mensaje de confirmación al enviar' },
-          { id: 't-2a3', text: 'Definir textos de la pantalla de postulación' },
-          { id: 't-2a4', text: 'Aprobar diseño del botón enviar' },
+          { id: 't-r1', text: 'Cambiar de color el botón enviar' },
+          { id: 't-r2', text: 'Solucionar el error al guardar datos de postulante' },
+          { id: 't-r3', text: 'Validar campos obligatorios del registro' },
+          { id: 't-r4', text: 'Agregar filtro por puesto' },
+          { id: 't-r5', text: 'Registrar resultado de entrevista' },
         ],
       },
       {
-        id: 'pr-2b', name: 'Carga de documentos',
+        id: 'pr-post', name: 'Portal de Postulantes', color: '#0b8043', deadline: addDays(T, 6),
         tasks: [
-          { id: 't-2b1', text: 'Revisar flujo de carga de CV' },
-          { id: 't-2b2', text: 'Limitar tamaño de archivos adjuntos' },
-        ],
-      },
-      {
-        id: 'pr-2c', name: 'Permisos y accesos',
-        tasks: [
-          { id: 't-2c1', text: 'Revisar permisos del rol reclutador' },
-          { id: 't-2c2', text: 'Configurar acceso de administrador' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'p3', name: 'Dashboard Intranet', color: '#8e24aa', deadline: addDays(T, 5),
-    processes: [
-      {
-        id: 'pr-3a', name: 'Indicadores',
-        tasks: [
-          { id: 't-3a1', text: 'Ajustar filtros del dashboard' },
-          { id: 't-3a2', text: 'Agregar gráfico de avance' },
-        ],
-      },
-      {
-        id: 'pr-3b', name: 'Exportación',
-        tasks: [
-          { id: 't-3b1', text: 'Corregir exportación a Excel' },
-          { id: 't-3b2', text: 'Exportar reporte a PDF' },
+          { id: 't-p1', text: 'Validar campos obligatorios' },
+          { id: 't-p2', text: 'Mensaje de confirmación al enviar' },
+          { id: 't-p3', text: 'Definir textos de la pantalla de postulación' },
+          { id: 't-p4', text: 'Aprobar diseño del botón enviar' },
+          { id: 't-p5', text: 'Revisar flujo de carga de CV' },
+          { id: 't-p6', text: 'Revisar permisos del rol reclutador' },
         ],
       },
     ],
@@ -173,6 +144,8 @@ export const PROJECTS = [
 
 export const projectById = (id) => PROJECTS.find((p) => p.id === id);
 export const processById = (projectId, processId) => projectById(projectId)?.processes.find((p) => p.id === processId);
+// Color de una reunión en el calendario: el de su proceso
+export const meetingColor = (m) => processById(m.projectId, m.processId)?.color ?? projectById(m.projectId)?.color ?? '#5f6368';
 export const areaById = (id) => AREAS.find((a) => a.id === id);
 
 export const RECURRENCES = [
@@ -258,21 +231,26 @@ export const carryCopy = (r, src) => ({
   sourceReqId: r.id,
 });
 
-/* ------------------------ Estadísticas de proyecto --------------------- */
-export function projectStats(project, meetings, today = todayKey()) {
-  const ms = meetings.filter((m) => m.projectId === project.id);
+/* ------------------- Estadísticas de proyecto / proceso ----------------- */
+function statsOf(ms, deadline, today) {
   const live = ms.flatMap((m) => m.reqs.filter((r) => !r.carried));
   const pending = live.filter((r) => !isDone(r)).length;
   const done = live.filter(isDone).length;
   const upcoming = ms.filter((m) => m.status === 'Programada' && m.date >= today).length;
   const recent = ms.filter((m) => m.date < today && m.date >= addDays(today, -14)).length;
-  const daysLeft = diffDays(project.deadline, today);
+  const daysLeft = diffDays(deadline, today);
   let status = 'En curso';
   if (live.length > 0 && pending === 0 && upcoming === 0) status = 'Finalizado';
   else if (daysLeft < 0) status = 'Atrasado';
   else if (daysLeft <= 7 && pending > 0) status = 'En riesgo';
   return { total: live.length, pending, done, upcoming, recent, daysLeft, status, count: ms.length };
 }
+
+export const projectStats = (project, meetings, today = todayKey()) =>
+  statsOf(meetings.filter((m) => m.projectId === project.id), project.deadline, today);
+
+export const processStats = (process, meetings, today = todayKey()) =>
+  statsOf(meetings.filter((m) => m.processId === process.id), process.deadline, today);
 
 /* --------------------------- Motor de propuestas ----------------------- */
 const overlaps = (a, b) => toMin(a.start) < toMin(b.end) && toMin(b.start) < toMin(a.end);
@@ -350,64 +328,62 @@ export function buildProposals(meetings, people, today = todayKey()) {
 // son tareas de ese proceso (o «Otra tarea» escrita a mano).
 export function makeSeed() {
   const t = todayKey();
-  const [p1, p2, p3] = PROJECTS;
+  const [intranet] = PROJECTS;
   // R(proceso, índice de tarea, estado, observación)
   const R = (proc, i, state = null, obs = '') => ({ ...newReq(proc.tasks[i].text, proc.id, proc.tasks[i].id), state, obs });
-  const [regPost, evalCand] = p1.processes;
-  const [formPost, , permisos] = p2.processes;
-  const [, exportacion] = p3.processes;
+  const [dash, recl, post] = intranet.processes;
 
   const series = expandRecurrence({
     id: 'seed-series',
-    title: 'Seguimiento semanal · Evaluación de candidatos',
-    projectId: p1.id,
-    processId: evalCand.id,
+    title: 'Seguimiento semanal · Reclutamiento',
+    projectId: intranet.id,
+    processId: recl.id,
     areaIds: ['a-front', 'a-back'],
     collabIds: [],
     date: addDays(t, 1),
     start: '10:00',
     end: '10:45',
     recurrence: 'weekly',
-    deadline: p1.deadline,
+    deadline: recl.deadline,
     status: 'Programada',
-    reqs: [R(evalCand, 0), R(evalCand, 1)],
+    reqs: [R(recl, 3), R(recl, 4)],
   });
 
   return [
     {
-      id: 'm1', title: 'Revisión de exportación', projectId: p3.id, processId: exportacion.id,
+      id: 'm1', title: 'Revisión de filtros y exportación', projectId: intranet.id, processId: dash.id,
       areaIds: ['a-front', 'a-qa'], collabIds: [],
-      date: addDays(t, -3), start: '10:00', end: '11:00', recurrence: 'none', deadline: p3.deadline,
+      date: addDays(t, -3), start: '10:00', end: '11:00', recurrence: 'none', deadline: dash.deadline,
       status: 'No completado',
-      reqs: [R(exportacion, 1, 'completado'), R(exportacion, 0, 'no_completado', 'Faltan definir las columnas con RRHH')],
+      reqs: [R(dash, 0, 'completado'), R(dash, 2, 'no_completado', 'Faltan definir las columnas con RRHH')],
     },
     {
-      id: 'm5', title: 'Revisión de permisos de postulantes', projectId: p2.id, processId: permisos.id,
+      id: 'm5', title: 'Revisión de permisos de postulantes', projectId: intranet.id, processId: post.id,
       areaIds: ['a-back', 'a-front'], collabIds: [],
-      date: addDays(t, -2), start: '11:00', end: '12:00', recurrence: 'none', deadline: p2.deadline,
+      date: addDays(t, -2), start: '11:00', end: '12:00', recurrence: 'none', deadline: post.deadline,
       status: 'Pendiente',
-      reqs: [R(permisos, 0, 'pendiente', 'Emergencia: incidente en producción, la reunión no se realizó')],
+      reqs: [R(post, 5, 'pendiente', 'Emergencia: incidente en producción, la reunión no se realizó')],
     },
     {
-      id: 'm2', title: 'Cierre del formulario de postulantes', projectId: p2.id, processId: formPost.id,
+      id: 'm2', title: 'Cierre del formulario de postulantes', projectId: intranet.id, processId: post.id,
       areaIds: ['a-front', 'a-rrhh'], collabIds: [],
-      date: addDays(t, -1), start: '15:00', end: '16:00', recurrence: 'none', deadline: p2.deadline,
+      date: addDays(t, -1), start: '15:00', end: '16:00', recurrence: 'none', deadline: post.deadline,
       status: 'Completado',
-      reqs: [R(formPost, 0, 'completado'), R(formPost, 1, 'completado')],
+      reqs: [R(post, 0, 'completado'), R(post, 1, 'completado')],
     },
     {
-      id: 'm3', title: 'Sprint review · Registro de postulantes', projectId: p1.id, processId: regPost.id,
+      id: 'm3', title: 'Sprint review · Reclutamiento', projectId: intranet.id, processId: recl.id,
       areaIds: ['a-front', 'a-back', 'a-qa'], collabIds: [],
-      date: t, start: '15:00', end: '16:00', recurrence: 'none', deadline: p1.deadline,
+      date: t, start: '15:00', end: '16:00', recurrence: 'none', deadline: recl.deadline,
       status: 'Programada',
-      reqs: [R(regPost, 0), R(regPost, 1)],
+      reqs: [R(recl, 0), R(recl, 1)],
     },
     {
-      id: 'm4', title: 'Coordinación con RRHH', projectId: p2.id, processId: formPost.id,
+      id: 'm4', title: 'Coordinación con RRHH', projectId: intranet.id, processId: post.id,
       areaIds: ['a-rrhh', 'a-dis'], collabIds: [],
-      date: addDays(t, 2), start: '09:00', end: '10:00', recurrence: 'none', deadline: p2.deadline,
+      date: addDays(t, 2), start: '09:00', end: '10:00', recurrence: 'none', deadline: post.deadline,
       status: 'Programada',
-      reqs: [R(formPost, 2), R(formPost, 3)],
+      reqs: [R(post, 2), R(post, 3), R(post, 4)],
     },
     ...series,
   ];

@@ -31,7 +31,7 @@ export default function App() {
     setTimeout(() => setToast(null), 3200);
   };
 
-  const visible = useMemo(() => meetings.filter((m) => !hidden.includes(m.projectId)), [meetings, hidden]);
+  const visible = useMemo(() => meetings.filter((m) => !hidden.includes(m.processId)), [meetings, hidden]);
 
   /* ----------------------------- colaboradores -------------------------- */
   const addPerson = (name, areaId) => {
@@ -195,7 +195,7 @@ export default function App() {
           cursor={cursor}
           meetings={meetings}
           hidden={hidden}
-          onToggleProject={(id) => setHidden((h) => (h.includes(id) ? h.filter((x) => x !== id) : [...h, id]))}
+          onToggleProcess={(id) => setHidden((h) => (h.includes(id) ? h.filter((x) => x !== id) : [...h, id]))}
           onPick={(d) => {
             setCursor(d);
             setSidebarOpen(false);
